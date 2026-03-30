@@ -122,6 +122,43 @@ def merge_all_extractions(
     cleaned = _clean_json_response(raw)
 
     try:
-        return json.loads(cleaned)
+        result = json.loads(cleaned)
+        return _deduplicate_per_vehicle_rows(result, column_headers)
     except json.JSONDecodeError:
         return {"_raw_response": raw, "_parse_error": "Failed to parse JSON"}
+
+
+def _deduplicate_per_vehicle_rows(merged: dict, column_headers: list[str]) -> dict:
+    """Remove duplicate per_vehicle_rows using invoice number + description as composite key."""
+    per_vehicle = merged.get("per_vehicle_rows", [])
+    if not per_vehicle:
+        return merged
+
+    # Find invoice-number and description column keys from headers
+    invoice_keys: list[str] = []
+    description_keys: list[str] = []
+    for h in column_headers:
+        h_lower = h.lower()
+        col_id = h.split(":")[0].strip() if ":" in h else h
+        if "invoice" in h_lower and ("no" in h_lower or "number" in h_lower):
+            invoice_keys.append(col_id)
+        if "description" in h_lower:
+            description_keys.append(col_id)
+
+    key_cols = invoice_keys + description_keys
+    if not key_cols:
+        return merged
+
+    seen: set[str] = set()
+    unique_rows: list[dict] = []
+    for row in per_vehicle:
+        parts = [str(row.get(k, "")).strip().upper() for k in key_cols]
+        composite = "|".join(parts)
+        if all(p == "" for p in parts):
+            unique_rows.append(row)
+        elif composite not in seen:
+            seen.add(composite)
+            unique_rows.append(row)
+
+    merged["per_vehicle_rows"] = unique_rows
+    return merged

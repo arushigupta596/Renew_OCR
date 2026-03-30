@@ -40,7 +40,15 @@ AVAILABLE_MODELS = [
 # Vision model for scanned PDF OCR (cheap, fast)
 VISION_MODEL = "google/gemini-2.0-flash-001"
 
-# Excel Configuration
+# Excel Configuration — 3 case templates
+CASE_TEMPLATES = {
+    "Case 1 – Import (EPC Customs Clearance)": os.path.join(os.path.dirname(__file__), "templates", "Case1.xlsx"),
+    "Case 2 – Import (HSS + SPV Customs Clearance)": os.path.join(os.path.dirname(__file__), "templates", "Case 2.xlsx"),
+    "Case 3 – Domestic Sale": os.path.join(os.path.dirname(__file__), "templates", "Case 3.xlsx"),
+}
+DEFAULT_CASE = list(CASE_TEMPLATES.keys())[0]
+
+# Legacy single template (kept for backward compatibility)
 TEMPLATE_PATH = os.path.join(os.path.dirname(__file__), "templates", "tracker_template.xlsx")
 HEADER_ROW_SEARCH_RANGE = 10  # Search first N rows to find the header row
 MIN_HEADER_COLUMNS = 5  # Minimum non-empty columns to consider a row as header
