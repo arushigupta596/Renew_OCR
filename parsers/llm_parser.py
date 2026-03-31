@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 import re
 from openai import OpenAI
@@ -129,35 +131,60 @@ def merge_all_extractions(
 
 
 def _deduplicate_per_vehicle_rows(merged: dict, column_headers: list[str]) -> dict:
-    """Remove duplicate per_vehicle_rows using invoice number + description as composite key."""
+    """Remove duplicate per_vehicle_rows using invoice number as the unique key.
+
+    Works across all case templates by searching row keys/values for
+    invoice-related content rather than relying on exact column header format.
+    Falls back to full-row content hash for exact duplicate removal.
+    """
     per_vehicle = merged.get("per_vehicle_rows", [])
     if not per_vehicle:
         return merged
 
-    # Find invoice-number and description column keys from headers
-    invoice_keys: list[str] = []
-    description_keys: list[str] = []
-    for h in column_headers:
-        h_lower = h.lower()
-        col_id = h.split(":")[0].strip() if ":" in h else h
-        if "invoice" in h_lower and ("no" in h_lower or "number" in h_lower):
-            invoice_keys.append(col_id)
-        if "description" in h_lower:
-            description_keys.append(col_id)
+    def _find_invoice_value(row: dict) -> str | None:
+        """Find the invoice number value in a row by checking all keys."""
+        for key, val in row.items():
+            key_lower = str(key).lower()
+            if "invoice" in key_lower and ("no" in key_lower or "num" in key_lower or "number" in key_lower):
+                v = str(val).strip()
+                if v and v.lower() not in ("", "none", "n/a", "null"):
+                    return v
+        # Broader search: any key with just "invoice" that has a number-like value
+        for key, val in row.items():
+            key_lower = str(key).lower()
+            if "invoice" in key_lower:
+                v = str(val).strip()
+                if v and v.lower() not in ("", "none", "n/a", "null"):
+                    return v
+        return None
 
-    key_cols = invoice_keys + description_keys
-    if not key_cols:
-        return merged
+    def _row_hash(row: dict) -> str:
+        """Create a normalized hash of the entire row for exact-duplicate detection."""
+        parts = []
+        for k in sorted(row.keys()):
+            v = str(row[k]).strip().upper()
+            if v and v not in ("NONE", "N/A", "NULL", ""):
+                parts.append(f"{k}={v}")
+        return "|".join(parts)
 
-    seen: set[str] = set()
+    seen_invoices: set[str] = set()
+    seen_hashes: set[str] = set()
     unique_rows: list[dict] = []
+
     for row in per_vehicle:
-        parts = [str(row.get(k, "")).strip().upper() for k in key_cols]
-        composite = "|".join(parts)
-        if all(p == "" for p in parts):
+        invoice = _find_invoice_value(row)
+        if invoice:
+            norm = invoice.strip().upper()
+            if norm in seen_invoices:
+                continue
+            seen_invoices.add(norm)
             unique_rows.append(row)
-        elif composite not in seen:
-            seen.add(composite)
+        else:
+            # No invoice key found — fall back to full-row hash
+            h = _row_hash(row)
+            if h in seen_hashes:
+                continue
+            seen_hashes.add(h)
             unique_rows.append(row)
 
     merged["per_vehicle_rows"] = unique_rows

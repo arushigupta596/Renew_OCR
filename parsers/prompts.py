@@ -71,7 +71,7 @@ Return ONLY a valid JSON object with "shared" and "per_row" keys. No markdown, n
 def build_merge_prompt(
     all_extracted: dict[str, dict],
     column_headers: list[str],
-    existing_row_data: list[dict] | None = None,
+    existing_row_data: list = None,
 ) -> str:
     """
     Build a prompt to merge extracted data from multiple documents into final row data.
@@ -106,6 +106,7 @@ def build_merge_prompt(
    - "shared_row": columns that should be the same across all rows (procurement, customs, e-way bill data)
    - "per_vehicle_rows": array of objects for per-vehicle data (transport, delivery), each with a "vehicle_no" key for matching
 5. Use column identifiers as keys (e.g., "Column B (2)").
+6. IMPORTANT: Each unique invoice number must appear exactly once in per_vehicle_rows. Do NOT create duplicate rows for the same invoice number.
 
 ## Response:
 Return ONLY a valid JSON object. No markdown, no explanation."""

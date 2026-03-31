@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import re
 import openpyxl
 from openpyxl.utils import get_column_letter, column_index_from_string
@@ -92,19 +94,17 @@ def write_to_tracker(
     per_vehicle = merged_data.get("per_vehicle_rows", [])
 
     data_start = schema["data_start_row"]
-    data_end = schema["data_end_row"]
-    num_data_rows = data_end - data_start + 1
 
-    # Write shared columns to all data rows
-    for row_offset in range(num_data_rows):
-        row_num = data_start + row_offset
-        _write_row_data(ws, row_num, shared, overwrite_existing)
-
-    # Write per-vehicle data by matching vehicle numbers
     if per_vehicle:
-        _write_per_vehicle_data(
-            ws, per_vehicle, existing_data, data_start, schema, overwrite_existing
-        )
+        # Write one row per vehicle: shared columns + per-vehicle columns merged
+        for i, vehicle_data in enumerate(per_vehicle):
+            row_num = data_start + i
+            # Shared data first, then vehicle-specific data overwrites
+            _write_row_data(ws, row_num, shared, overwrite_existing)
+            _write_row_data(ws, row_num, vehicle_data, overwrite_existing)
+    else:
+        # No per-vehicle data — write shared data to a single row
+        _write_row_data(ws, data_start, shared, overwrite_existing)
 
     wb.save(output_path)
     wb.close()
