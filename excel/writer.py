@@ -3,7 +3,6 @@ from __future__ import annotations
 import re
 import openpyxl
 from openpyxl.utils import get_column_letter, column_index_from_string
-from datetime import datetime
 
 
 def _parse_column_key(key: str) -> int | None:
@@ -41,17 +40,9 @@ def _coerce_value(value, existing_cell_value=None):
     if s.upper() in ("N/A", "NA", "NONE", "NULL"):
         return "N/A"
 
-    # Try date parsing (YYYY-MM-DD)
-    date_match = re.match(r"^(\d{4})-(\d{1,2})-(\d{1,2})$", s)
-    if date_match:
-        try:
-            return datetime(
-                int(date_match.group(1)),
-                int(date_match.group(2)),
-                int(date_match.group(3)),
-            )
-        except ValueError:
-            pass
+    # Preserve currency-prefixed strings (e.g. "INR 1,27,97,788.63", "USD 500.00")
+    if re.match(r"^[A-Z]{2,3}\s", s):
+        return s
 
     # Try numeric
     try:
@@ -91,7 +82,7 @@ def write_to_tracker(
     ws = wb.active
 
     shared = merged_data.get("shared_row", {})
-    per_vehicle = merged_data.get("per_vehicle_rows", [])
+    per_vehicle = _dedup_per_vehicle_list(merged_data.get("per_vehicle_rows", []))
 
     data_start = schema["data_start_row"]
 
@@ -109,6 +100,78 @@ def write_to_tracker(
     wb.save(output_path)
     wb.close()
     return output_path
+
+
+def _dedup_per_vehicle_list(per_vehicle: list[dict]) -> list[dict]:
+    """Final safety-net merge by BoE/vehicle before writing to Excel."""
+
+    def _is_blank(value) -> bool:
+        return str(value).strip().upper() in ("", "NONE", "N/A", "NULL")
+
+    def _find_boe(row: dict) -> str | None:
+        for key, value in row.items():
+            key_lower = str(key).lower()
+            if "boe" in key_lower or "bill of entry" in key_lower or "be number" in key_lower:
+                if not _is_blank(value):
+                    return str(value).strip().upper()
+        return None
+
+    def _find_vehicle(row: dict) -> str | None:
+        for key, value in row.items():
+            if "vehicle" in str(key).lower() and not _is_blank(value):
+                return str(value).strip().upper()
+        return None
+
+    def _find_invoice(row: dict) -> str | None:
+        for key, value in row.items():
+            if "invoice" in str(key).lower() and not _is_blank(value):
+                return str(value).strip().upper()
+        return None
+
+    def _merge_rows(base: dict, incoming: dict) -> dict:
+        merged_row = dict(base)
+        for key, value in incoming.items():
+            if key.startswith("_") or _is_blank(value):
+                continue
+            if key not in merged_row or _is_blank(merged_row[key]):
+                merged_row[key] = value
+        return merged_row
+
+    keyed: dict[str, dict] = {}
+    seen_hashes: set[str] = set()
+    unique: list[dict] = []
+
+    for row in per_vehicle:
+        boe = _find_boe(row)
+        vehicle = _find_vehicle(row)
+        invoice = _find_invoice(row)
+
+        key = None
+        if boe:
+            key = f"boe::{boe}"
+        elif vehicle and invoice:
+            key = f"vehicle_invoice::{vehicle}||{invoice}"
+        elif vehicle:
+            key = f"vehicle::{vehicle}"
+
+        if key:
+            if key in keyed:
+                keyed[key] = _merge_rows(keyed[key], row)
+            else:
+                keyed[key] = dict(row)
+            continue
+
+        h = "|".join(
+            f"{k}={str(row[k]).strip().upper()}" for k in sorted(row.keys())
+            if not _is_blank(row[k])
+        )
+        if h in seen_hashes:
+            continue
+        seen_hashes.add(h)
+        unique.append(dict(row))
+
+    unique.extend(keyed.values())
+    return unique
 
 
 def _write_row_data(ws, row_num: int, data: dict, overwrite: bool):

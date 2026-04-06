@@ -393,13 +393,13 @@ st.markdown("")  # spacer
 with st.container(border=True):
     st.markdown('<span class="step-badge">Step 2</span>', unsafe_allow_html=True)
     st.markdown('<p class="step-title">Extract Text from PDFs</p>', unsafe_allow_html=True)
-    st.markdown('<p class="step-desc">Digital PDFs are extracted instantly via PyMuPDF. Scanned documents using OCR.</p>', unsafe_allow_html=True)
+    st.markdown('<p class="step-desc">Digital PDFs are extracted instantly via PyMuPDF. Scanned documents use Vision OCR (gpt-4o-mini).</p>', unsafe_allow_html=True)
 
     if "ocr_results" not in st.session_state:
         st.session_state.ocr_results = None
 
     if st.button("Extract Text", disabled=folder_path is None):
-        progress = st.progress(0, text="Starting text extraction...")
+        progress = st.progress(0, text="Starting vision extraction...")
         status = st.empty()
 
         def ocr_progress(current, total, filename):
@@ -413,9 +413,10 @@ with st.container(border=True):
                 vision_model=config.VISION_MODEL,
                 base_url=base_url,
                 progress_callback=ocr_progress,
+                force_vision=False,
             )
             st.session_state.ocr_results = results
-            progress.progress(1.0, text="Text extraction complete!")
+            progress.progress(1.0, text="Vision extraction complete!")
 
             errors = [f for f, t in results.items() if t.startswith("[OCR ERROR]")]
             if errors:
@@ -464,6 +465,7 @@ with st.container(border=True):
             model=model,
             base_url=base_url,
             progress_callback=extract_progress,
+            case=st.session_state.get("selected_case", ""),
         )
         st.session_state.extracted_data = all_extracted
 
@@ -475,6 +477,8 @@ with st.container(border=True):
             api_key=api_key,
             model=model,
             base_url=base_url,
+            case=st.session_state.get("selected_case", ""),
+            ocr_results=st.session_state.ocr_results,
         )
         st.session_state.merged_data = merged
         progress.progress(1.0, text="Extraction complete!")

@@ -38,7 +38,7 @@ AVAILABLE_MODELS = [
 ]
 
 # Vision model for scanned PDF OCR (cheap, fast)
-VISION_MODEL = "google/gemini-2.0-flash-001"
+VISION_MODEL = "openai/gpt-4o-mini"
 
 # Excel Configuration — 3 case templates
 CASE_TEMPLATES = {
